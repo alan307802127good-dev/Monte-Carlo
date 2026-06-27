@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>捉放法 Monte Carlo iPad 最終版</title>
+<style>
+:root{
+  --bg:#f2f2f7;--card:#fff;--blue:#007AFF;--green:#059669;--red:#ef4444;
+  --gray:#6b7280;--line:#d1d5db;--soft:#eff6ff;--orange:#fff7ed;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;padding:12px;background:var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;
+  color:#111827;-webkit-text-size-adjust:100%;
+}
+.wrap{max-width:1080px;margin:auto;padding-bottom:40px}
+.card{
+  background:var(--card);border-radius:20px;padding:16px;margin-bottom:14px;
+  box-shadow:0 4px 14px rgba(0,0,0,.08);
+}
+h1{font-size:28px;text-align:center;margin:8px 0}
+h2{font-size:22px;margin:8px 0 12px}
+.small{font-size:14px;color:var(--gray);line-height:1.6}
+.first{background:var(--orange);border:2px solid #fb923c}
+.note{
+  background:#ecfdf5;border-left:6px solid var(--green);
+  border-radius:14px;padding:10px 12px;line-height:1.6;margin-top:10px;
+}
+.status{
+  border-radius:14px;padding:10px 12px;margin-top:10px;font-weight:900;
+  background:#fee2e2;color:#991b1b;
+}
+.status.ok{background:#dcfce7;color:#166534}
+label{display:block;font-weight:900;margin:8px 0 5px}
+input,select,button{font-size:20px;border-radius:14px;padding:13px;min-height:52px}
+input,select{
+  width:100%;border:1.5px solid var(--line);background:white;
+  -webkit-user-select:text;user-select:text;
+}
+input:focus{outline:3px solid #dbeafe;border-color:var(--blue)}
+button{
+  border:0;background:var(--blue);color:white;font-weight:900;
+  cursor:pointer;touch-action:manipulation;
+}
+button.green{background:var(--green)}
+button.red{background:var(--red)}
+button.gray{background:#e5e7eb;color:#111827}
+button.smallbtn{font-size:16px;min-height:42px;padding:8px 10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btnrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+@media(max-width:850px){
+  .grid3,.grid2{grid-template-columns:1fr}
+  .btnrow{grid-template-columns:1fr 1fr}
+}
+.switch{display:flex;align-items:center;gap:8px;font-weight:900;margin-top:10px}
+.switch input{width:28px;height:28px;min-height:28px}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+@media(max-width:950px){.stats{grid-template-columns:1fr 1fr 1fr}}
+@media(max-width:650px){.stats{grid-template-columns:1fr 1fr}}
+.stat{background:#f9fafb;border:1px solid #e5e7eb;border-radius:16px;padding:12px}
+.stat .name{font-size:13px;color:var(--gray)}
+.stat .num{font-size:23px;font-weight:950;margin-top:4px}
+.tableWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:15px;min-width:820px}
+th,td{border-bottom:1px solid #e5e7eb;padding:8px;text-align:center}
+th{background:var(--soft);font-weight:950}
+td input{min-width:95px;text-align:center}
+.sourceStudent{font-weight:900;color:#2563eb}
+.sourceSim{font-weight:900;color:#047857}
+canvas{width:100%;height:420px;border:1px solid #e5e7eb;border-radius:16px;background:white;margin-top:12px}
+</style>
+</head>
+<body onload="initPage()">
+<div class="wrap">
+
+<section class="card">
+<h1>捉放法 Monte Carlo 模擬器</h1>
+<p class="small" style="text-align:center">iPad 最終版：按鈕使用最保守相容寫法。</p>
+<div id="jsStatus" class="status">互動尚未啟動：若一直看到這行，請用 Safari 開啟，不要只在「檔案預覽」中開啟。</div>
+</section>
+
+<section class="card first">
+<h2>一、第一次捕捉並標記</h2>
+<div class="grid3">
+  <div>
+    <label>第一次標記數量 M</label>
+    <input id="M" type="text" inputmode="numeric" value="20" oninput="dataChanged()">
+  </div>
+  <div>
+    <label>AI 延伸模擬每次捕捉數 C</label>
+    <input id="simC" type="text" inputmode="numeric" value="20" oninput="updateAll()">
+  </div>
+  <div>
+    <label>模擬速度</label>
+    <select id="speed" onchange="speedChanged()">
+      <option value="1000">慢速：1 秒一次</option>
+      <option value="500">中速：0.5 秒一次</option>
+      <option value="200" selected>快速：0.2 秒一次</option>
+      <option value="60">超快速</option>
+    </select>
+  </div>
+</div>
+
+<div class="note">
+Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和，再用 p 隨機產生新的標記數 R。
+</div>
+
+<div class="grid2">
+  <div>
+    <div class="switch">
+      <input id="showReal" type="checkbox" onchange="updateAll()">
+      <span>事後顯示真實數量參考線</span>
+    </div>
+    <label>真實數量 N，可空白；只用來事後比較</label>
+    <input id="realN" type="text" inputmode="numeric" placeholder="例如：50" oninput="updateAll()">
+  </div>
+  <div>
+    <label>目前估計標記比例 p</label>
+    <input id="pText" type="text" value="尚未有有效資料" readonly>
+    <p class="small">此欄不用學生輸入。</p>
+  </div>
+</div>
+</section>
+
+<section class="card">
+<h2>二、學生實測資料</h2>
+<p class="small">學生一格一格輸入每次捕捉數 C 與標記數 R。</p>
+
+<div class="btnrow">
+  <button type="button" onclick="addStudentRow()">增加 1 次</button>
+  <button type="button" onclick="addStudentRows(5)">增加 5 次</button>
+  <button type="button" onclick="makeTwentyRows()">建立 20 次空格</button>
+  <button class="gray" type="button" onclick="clearStudentRows()">清空學生資料</button>
+</div>
+
+<div class="tableWrap">
+<table>
+<thead>
+<tr>
+<th>次數</th><th>來源</th><th>捕捉數 C</th><th>標記數 R</th>
+<th>單次推估 N</th><th>累積平均</th><th>操作</th>
+</tr>
+</thead>
+<tbody id="studentBody">
+
+<tr>
+  <td class="idx">1</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">2</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">3</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">4</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">5</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">6</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">7</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">8</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">9</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">10</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">11</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">12</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">13</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">14</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">15</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">16</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">17</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">18</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">19</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+
+<tr>
+  <td class="idx">20</td>
+  <td class="sourceStudent">學生</td>
+  <td><input class="cInput" type="text" inputmode="numeric" value="20" oninput="dataChanged()"></td>
+  <td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" oninput="dataChanged()"></td>
+  <td class="estCell">-</td>
+  <td class="avgCell">-</td>
+  <td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>
+</tr>
+
+</tbody>
+</table>
+</div>
+</section>
+
+<section class="card">
+<h2>三、AI 延伸模擬</h2>
+<div class="btnrow">
+  <button class="green" type="button" onclick="simulateOne()">模擬 1 次</button>
+  <button class="green" type="button" onclick="startSim()">一直模擬</button>
+  <button class="gray" type="button" onclick="stopSim()">停止</button>
+  <button class="red" type="button" onclick="clearSimulation()">清空後續模擬</button>
+</div>
+<div class="btnrow">
+  <button type="button" onclick="simulateMany(10)">再模擬 10 次</button>
+  <button type="button" onclick="simulateMany(50)">再模擬 50 次</button>
+  <button type="button" onclick="simulateMany(100)">再模擬 100 次</button>
+  <button class="gray" type="button" onclick="resetAll()">全部重新開始</button>
+</div>
+</section>
+
+<section class="card">
+<h2>四、結果與累積平均折線圖</h2>
+<div class="stats">
+  <div class="stat"><div class="name">學生有效次數</div><div class="num" id="studentCount">0</div></div>
+  <div class="stat"><div class="name">AI 模擬次數</div><div class="num" id="simCount">0</div></div>
+  <div class="stat"><div class="name">總有效次數</div><div class="num" id="totalCount">0</div></div>
+  <div class="stat"><div class="name">目前累積平均</div><div class="num" id="avgText">-</div></div>
+  <div class="stat"><div class="name">估計 p</div><div class="num" id="pStat">-</div></div>
+  <div class="stat"><div class="name">與真實值誤差</div><div class="num" id="errorText">-</div></div>
+</div>
+
+<canvas id="chart" width="980" height="420"></canvas>
+
+<div class="tableWrap">
+<table>
+<thead>
+<tr><th>次數</th><th>來源</th><th>C</th><th>R</th><th>單次推估 N</th><th>累積平均</th></tr>
+</thead>
+<tbody id="resultBody"></tbody>
+</table>
+</div>
+</section>
+
+</div>
+
+<script>
+var simRecords = [];
+var timer = null;
+
+function E(id){ return document.getElementById(id); }
+
+function toNum(v){
+  var s = String(v || "").replace(/[^0-9.]/g, "");
+  var n = Number(s);
+  if(!isFinite(n)) return 0;
+  return n;
+}
+
+function round1(x){
+  if(!isFinite(x)) return "-";
+  return (Math.round(x * 10) / 10).toFixed(1);
+}
+
+function round3(x){
+  if(!isFinite(x)) return "-";
+  return (Math.round(x * 1000) / 1000).toFixed(3);
+}
+
+function getM(){ return toNum(E("M").value); }
+function getSimC(){ return toNum(E("simC").value); }
+
+function estimateN(C, R){
+  var M = getM();
+  if(M <= 0 || C <= 0 || R <= 0) return null;
+  return M * C / R;
+}
+
+function initPage(){
+  var st = E("jsStatus");
+  if(st){
+    st.className = "status ok";
+    st.innerHTML = "互動已啟動：可以輸入、刪除、增加次數與模擬。";
+  }
+  updateAll();
+}
+
+function dataChanged(){
+  if(simRecords.length > 0){
+    simRecords = [];
+  }
+  updateAll();
+}
+
+function renumberRows(){
+  var rows = document.querySelectorAll("#studentBody tr");
+  var i;
+  for(i=0;i<rows.length;i++){
+    rows[i].querySelector(".idx").innerHTML = i + 1;
+  }
+}
+
+function addStudentRow(C, R){
+  if(C === undefined || C === null || C === "") C = getSimC();
+  if(R === undefined || R === null) R = "";
+
+  var tr = document.createElement("tr");
+  tr.innerHTML =
+    '<td class="idx"></td>' +
+    '<td class="sourceStudent">學生</td>' +
+    '<td><input class="cInput" type="text" inputmode="numeric" value="' + C + '" oninput="dataChanged()"></td>' +
+    '<td><input class="rInput" type="text" inputmode="numeric" placeholder="填R" value="' + R + '" oninput="dataChanged()"></td>' +
+    '<td class="estCell">-</td>' +
+    '<td class="avgCell">-</td>' +
+    '<td><button class="red smallbtn" type="button" onclick="deleteRow(this)">刪除</button></td>';
+
+  E("studentBody").appendChild(tr);
+  updateAll();
+}
+
+function addStudentRows(n){
+  var i;
+  for(i=0;i<n;i++){
+    addStudentRow(getSimC(), "");
+  }
+  updateAll();
+}
+
+function makeTwentyRows(){
+  var ok = confirm("這會清空目前資料並建立 20 次空格。確定嗎？");
+  if(!ok) return;
+  stopSim();
+  simRecords = [];
+  E("studentBody").innerHTML = "";
+  var i;
+  for(i=0;i<20;i++){
+    addStudentRow(getSimC(), "");
+  }
+  updateAll();
+}
+
+function deleteRow(btn){
+  var row = btn.parentNode.parentNode;
+  row.parentNode.removeChild(row);
+  simRecords = [];
+  updateAll();
+}
+
+function clearStudentRows(){
+  var ok = confirm("確定清空學生資料嗎？後續模擬也會清空。");
+  if(!ok) return;
+  stopSim();
+  simRecords = [];
+  E("studentBody").innerHTML = "";
+  updateAll();
+}
+
+function getStudentRows(){
+  return document.querySelectorAll("#studentBody tr");
+}
+
+function getStudentRecords(){
+  var rows = getStudentRows();
+  var records = [];
+  var i;
+  for(i=0;i<rows.length;i++){
+    var C = toNum(rows[i].querySelector(".cInput").value);
+    var R = toNum(rows[i].querySelector(".rInput").value);
+    var est = estimateN(C, R);
+    if(est !== null){
+      records.push({source:"學生", C:C, R:R, est:est});
+    }
+  }
+  return records;
+}
+
+function getEstimatedP(){
+  var rows = getStudentRows();
+  var sumR = 0;
+  var sumC = 0;
+  var i;
+  for(i=0;i<rows.length;i++){
+    var C = toNum(rows[i].querySelector(".cInput").value);
+    var R = toNum(rows[i].querySelector(".rInput").value);
+    if(C > 0 && R >= 0 && R <= C){
+      sumC += C;
+      sumR += R;
+    }
+  }
+  if(sumC <= 0) return null;
+  var p = sumR / sumC;
+  if(p <= 0 || p >= 1) return null;
+  return {p:p, sumR:sumR, sumC:sumC};
+}
+
+function monteCarloR(C, p){
+  var R = 0;
+  var i;
+  for(i=0;i<C;i++){
+    if(Math.random() < p) R++;
+  }
+  return R;
+}
+
+function simulateRecord(){
+  var pInfo = getEstimatedP();
+  var C = getSimC();
+
+  if(!pInfo){
+    alert("請先輸入有效學生資料，讓 p 介於 0 和 1。");
+    stopSim();
+    return null;
+  }
+
+  if(C <= 0){
+    alert("請輸入有效的 AI 延伸模擬捕捉數 C。");
+    stopSim();
+    return null;
+  }
+
+  var R = monteCarloR(C, pInfo.p);
+  var guard = 0;
+  while(R <= 0 && guard < 20){
+    R = monteCarloR(C, pInfo.p);
+    guard++;
+  }
+  if(R <= 0) return null;
+
+  return {
+    source:"AI模擬",
+    C:C,
+    R:R,
+    est:estimateN(C, R),
+    pUsed:pInfo.p
+  };
+}
+
+function simulateOne(){
+  var rec = simulateRecord();
+  if(!rec) return;
+  simRecords.push(rec);
+  updateAll();
+}
+
+function simulateMany(n){
+  var i;
+  for(i=0;i<n;i++){
+    var rec = simulateRecord();
+    if(!rec) break;
+    simRecords.push(rec);
+  }
+  updateAll();
+}
+
+function startSim(){
+  stopSim();
+  var ms = toNum(E("speed").value);
+  timer = setInterval(function(){ simulateOne(); }, ms);
+}
+
+function stopSim(){
+  if(timer){
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+function clearSimulation(){
+  stopSim();
+  simRecords = [];
+  updateAll();
+}
+
+function resetAll(){
+  stopSim();
+  simRecords = [];
+  E("studentBody").innerHTML = "";
+  var i;
+  for(i=0;i<20;i++){
+    addStudentRow(getSimC(), "");
+  }
+  updateAll();
+}
+
+function speedChanged(){
+  if(timer){
+    startSim();
+  }
+}
+
+function updateStudentTable(){
+  renumberRows();
+
+  var rows = getStudentRows();
+  var sum = 0;
+  var count = 0;
+  var i;
+
+  for(i=0;i<rows.length;i++){
+    var C = toNum(rows[i].querySelector(".cInput").value);
+    var R = toNum(rows[i].querySelector(".rInput").value);
+    var est = estimateN(C, R);
+
+    if(est !== null){
+      sum += est;
+      count++;
+      rows[i].querySelector(".estCell").innerHTML = round1(est);
+      rows[i].querySelector(".avgCell").innerHTML = round1(sum / count);
+    }else{
+      rows[i].querySelector(".estCell").innerHTML = "-";
+      rows[i].querySelector(".avgCell").innerHTML = "-";
+    }
+  }
+}
+
+function updateAll(){
+  updateStudentTable();
+
+  var pInfo = getEstimatedP();
+  if(pInfo){
+    E("pText").value = "p = " + round3(pInfo.p) + "（R總和 " + pInfo.sumR + " ÷ C總和 " + pInfo.sumC + "）";
+    E("pStat").innerHTML = round3(pInfo.p);
+  }else{
+    E("pText").value = "尚未有有效資料";
+    E("pStat").innerHTML = "-";
+  }
+
+  var studentRecords = getStudentRecords();
+
+  var newSim = [];
+  var s;
+  for(s=0;s<simRecords.length;s++){
+    var r = simRecords[s];
+    var est = estimateN(r.C, r.R);
+    if(est !== null){
+      newSim.push({source:"AI模擬", C:r.C, R:r.R, est:est, pUsed:r.pUsed});
+    }
+  }
+  simRecords = newSim;
+
+  var all = studentRecords.concat(simRecords);
+  var body = E("resultBody");
+  body.innerHTML = "";
+
+  var sum = 0;
+  var count = 0;
+  var studentCount = 0;
+  var simCount = 0;
+  var avgs = [];
+  var i;
+
+  for(i=0;i<all.length;i++){
+    var rec = all[i];
+    if(rec.source === "學生") studentCount++;
+    if(rec.source === "AI模擬") simCount++;
+
+    sum += rec.est;
+    count++;
+    var avg = sum / count;
+    avgs.push(avg);
+
+    var cls = rec.source === "學生" ? "sourceStudent" : "sourceSim";
+    body.innerHTML += "<tr><td>" + count + "</td><td class='" + cls + "'>" + rec.source +
+      "</td><td>" + rec.C + "</td><td>" + rec.R + "</td><td>" + round1(rec.est) +
+      "</td><td>" + round1(avg) + "</td></tr>";
+  }
+
+  E("studentCount").innerHTML = studentCount;
+  E("simCount").innerHTML = simCount;
+  E("totalCount").innerHTML = count;
+  E("avgText").innerHTML = count ? round1(sum / count) : "-";
+
+  var realN = toNum(E("realN").value);
+  if(count && realN > 0){
+    var finalAvg = sum / count;
+    var err = finalAvg - realN;
+    var pct = err / realN * 100;
+    E("errorText").innerHTML = round1(err) + " / " + round1(pct) + "%";
+  }else{
+    E("errorText").innerHTML = "-";
+  }
+
+  drawChart(avgs, studentCount);
+}
+
+function drawChart(data, splitIndex){
+  var canvas = E("chart");
+  var ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  var L = 70, T = 30, W = canvas.width - 110, H = canvas.height - 82;
+
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(L,T);
+  ctx.lineTo(L,T+H);
+  ctx.lineTo(L+W,T+H);
+  ctx.stroke();
+
+  ctx.fillStyle = "#111827";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("累積平均預估數量",8,20);
+  ctx.fillText("捉放次數",canvas.width/2-35,canvas.height-10);
+
+  if(data.length === 0) return;
+
+  var showReal = E("showReal").checked;
+  var realN = toNum(E("realN").value);
+
+  var min = Math.min.apply(null, data);
+  var max = Math.max.apply(null, data);
+
+  if(showReal && realN > 0){
+    min = Math.min(min, realN);
+    max = Math.max(max, realN);
+  }
+
+  if(min === max){
+    min -= 1;
+    max += 1;
+  }
+
+  var pad = Math.max(2, (max-min)*0.08);
+  min -= pad;
+  max += pad;
+
+  function xAt(i){
+    return L + i * (W / Math.max(1, data.length - 1));
+  }
+
+  function yAt(v){
+    return T + H - (v - min) / (max - min) * H;
+  }
+
+  ctx.font = "14px sans-serif";
+  var j;
+  for(j=0;j<=5;j++){
+    var y = T + H*j/5;
+    var val = max - (max-min)*j/5;
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(L,y);
+    ctx.lineTo(L+W,y);
+    ctx.stroke();
+    ctx.fillStyle = "#374151";
+    ctx.fillText(val.toFixed(0),12,y+5);
+  }
+
+  if(showReal && realN > 0){
+    var ry = yAt(realN);
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8,6]);
+    ctx.beginPath();
+    ctx.moveTo(L,ry);
+    ctx.lineTo(L+W,ry);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillText("真實數量 " + realN,L+8,ry-7);
+  }
+
+  if(splitIndex > 0 && splitIndex < data.length){
+    var sx = xAt(splitIndex-1);
+    ctx.strokeStyle = "#9ca3af";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5,5]);
+    ctx.beginPath();
+    ctx.moveTo(sx,T);
+    ctx.lineTo(sx,T+H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#6b7280";
+    ctx.fillText("學生資料結束",sx+6,T+18);
+  }
+
+  if(splitIndex > 0){
+    ctx.strokeStyle = "#007AFF";
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    var a;
+    for(a=0;a<Math.min(splitIndex,data.length);a++){
+      var x = xAt(a);
+      var y2 = yAt(data[a]);
+      if(a===0) ctx.moveTo(x,y2);
+      else ctx.lineTo(x,y2);
+    }
+    ctx.stroke();
+  }
+
+  if(data.length > splitIndex){
+    ctx.strokeStyle = "#059669";
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    var b;
+    for(b=Math.max(0,splitIndex-1);b<data.length;b++){
+      var x2 = xAt(b);
+      var y3 = yAt(data[b]);
+      if(b===Math.max(0,splitIndex-1)) ctx.moveTo(x2,y3);
+      else ctx.lineTo(x2,y3);
+    }
+    ctx.stroke();
+  }
+}
+</script>
+</body>
+</html>
