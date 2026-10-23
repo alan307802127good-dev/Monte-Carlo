@@ -105,7 +105,7 @@ canvas{width:100%;height:420px;border:1px solid #e5e7eb;border-radius:16px;backg
 </div>
 
 <div class="note">
-Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和，再用 p 隨機產生新的標記數 R。
+Monte Carlo 流程：先用已完整填寫的學生資料估計 p = ΣR ÷ ΣC，再以二項模型隨機產生 R（AI 延伸是隨機模擬，不是新增實測證據）。<br>實測每回合捕捉後全部放回、充分混合，總量與標記數維持不變，各個體捕捉機會相同。二項模型假設每次判定獨立、機率固定，可能產生 R&gt;M；實物單回合不放回時應用超幾何模型，此處僅作近似，捕捉比例大時不宜視為實物重現。
 </div>
 
 <div class="grid2">
@@ -127,7 +127,7 @@ Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和
 
 <section class="card">
 <h2>二、學生實測資料</h2>
-<p class="small">學生一格一格輸入每次捕捉數 C 與標記數 R。</p>
+<p class="small">學生一格一格輸入每次捕捉數 C 與標記數 R。M、C 必須為正整數；R 為 0 到 min(C, M) 的整數。空白不等於 0。</p>
 
 <div class="btnrow">
   <button type="button" onclick="addStudentRow()">增加 1 次</button>
@@ -141,7 +141,7 @@ Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和
 <thead>
 <tr>
 <th>次數</th><th>來源</th><th>捕捉數 C</th><th>標記數 R</th>
-<th>單次推估 N</th><th>累積平均</th><th>操作</th>
+<th>單次推估 N</th><th>R&gt;0 累積平均</th><th>操作</th>
 </tr>
 </thead>
 <tbody id="studentBody">
@@ -372,6 +372,7 @@ Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和
 
 <section class="card">
 <h2>三、AI 延伸模擬</h2>
+<p id="simStatus" class="small" role="status"></p>
 <div class="btnrow">
   <button class="green" type="button" onclick="simulateOne()">模擬 1 次</button>
   <button class="green" type="button" onclick="startSim()">一直模擬</button>
@@ -387,22 +388,24 @@ Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和
 </section>
 
 <section class="card">
-<h2>四、結果與累積平均折線圖</h2>
+<h2>四、結果與R&gt;0 累積平均折線圖</h2>
 <div class="stats">
   <div class="stat"><div class="name">學生有效次數</div><div class="num" id="studentCount">0</div></div>
   <div class="stat"><div class="name">AI 模擬次數</div><div class="num" id="simCount">0</div></div>
   <div class="stat"><div class="name">總有效次數</div><div class="num" id="totalCount">0</div></div>
-  <div class="stat"><div class="name">目前累積平均</div><div class="num" id="avgText">-</div></div>
+  <div class="stat"><div class="name">目前R&gt;0 累積平均</div><div class="num" id="avgText">-</div></div>
   <div class="stat"><div class="name">估計 p</div><div class="num" id="pStat">-</div></div>
-  <div class="stat"><div class="name">與真實值誤差</div><div class="num" id="errorText">-</div></div>
+  <div class="stat"><div class="name">R&gt;0 平均與真實值誤差</div><div class="num" id="errorText">-</div></div>
 </div>
 
+<p class="small">R=0 是有效觀測，但 N̂=M×C÷R 無法給出有限估計，並不代表母體無限大。下方平均僅涵蓋 R&gt;0 的單次估計，可能有偏差；曲線穩定不代表接近真值。零標記仍計入次數及學生合併估計。</p>
+<div class="note" id="pooledText"></div>
 <canvas id="chart" width="980" height="420"></canvas>
 
 <div class="tableWrap">
 <table>
 <thead>
-<tr><th>次數</th><th>來源</th><th>C</th><th>R</th><th>單次推估 N</th><th>累積平均</th></tr>
+<tr><th>次數</th><th>來源</th><th>C</th><th>R</th><th>單次推估 N</th><th>R&gt;0 累積平均</th></tr>
 </thead>
 <tbody id="resultBody"></tbody>
 </table>
@@ -414,23 +417,24 @@ Monte Carlo 流程：先用學生資料估計標記比例 p = R總和 ÷ C總和
 <script>
 var simRecords = [];
 var timer = null;
+var simStale = false;
 
 function E(id){ return document.getElementById(id); }
 
 function toNum(v){
-  var s = String(v || "").replace(/[^0-9.]/g, "");
+  var s = String(v == null ? "" : v).replace(/^\s+|\s+$/g, "");
+  if(!/^[0-9]+$/.test(s)) return NaN;
   var n = Number(s);
-  if(!isFinite(n)) return 0;
-  return n;
+  return isFinite(n) && n <= 9007199254740991 ? n : NaN;
 }
 
 function round1(x){
-  if(!isFinite(x)) return "-";
+  if(x === null || !isFinite(x)) return "-";
   return (Math.round(x * 10) / 10).toFixed(1);
 }
 
 function round3(x){
-  if(!isFinite(x)) return "-";
+  if(x === null || !isFinite(x)) return "-";
   return (Math.round(x * 1000) / 1000).toFixed(3);
 }
 
@@ -439,7 +443,7 @@ function getSimC(){ return toNum(E("simC").value); }
 
 function estimateN(C, R){
   var M = getM();
-  if(M <= 0 || C <= 0 || R <= 0) return null;
+  if(!(M > 0) || !(C > 0) || !(R > 0) || R > C) return null;
   return M * C / R;
 }
 
@@ -453,10 +457,13 @@ function initPage(){
 }
 
 function dataChanged(){
-  if(simRecords.length > 0){
-    simRecords = [];
-  }
+  stopSim();
+  if(simRecords.length > 0) simStale = true;
   updateAll();
+}
+
+function validObservation(C, R){
+  return getM() > 0 && C > 0 && isFinite(R) && R >= 0 && R <= C && R <= getM();
 }
 
 function renumberRows(){
@@ -498,6 +505,7 @@ function makeTwentyRows(){
   if(!ok) return;
   stopSim();
   simRecords = [];
+  simStale = false;
   E("studentBody").innerHTML = "";
   var i;
   for(i=0;i<20;i++){
@@ -509,8 +517,7 @@ function makeTwentyRows(){
 function deleteRow(btn){
   var row = btn.parentNode.parentNode;
   row.parentNode.removeChild(row);
-  simRecords = [];
-  updateAll();
+  dataChanged();
 }
 
 function clearStudentRows(){
@@ -518,6 +525,7 @@ function clearStudentRows(){
   if(!ok) return;
   stopSim();
   simRecords = [];
+  simStale = false;
   E("studentBody").innerHTML = "";
   updateAll();
 }
@@ -534,7 +542,7 @@ function getStudentRecords(){
     var C = toNum(rows[i].querySelector(".cInput").value);
     var R = toNum(rows[i].querySelector(".rInput").value);
     var est = estimateN(C, R);
-    if(est !== null){
+    if(validObservation(C, R)){
       records.push({source:"學生", C:C, R:R, est:est});
     }
   }
@@ -549,14 +557,13 @@ function getEstimatedP(){
   for(i=0;i<rows.length;i++){
     var C = toNum(rows[i].querySelector(".cInput").value);
     var R = toNum(rows[i].querySelector(".rInput").value);
-    if(C > 0 && R >= 0 && R <= C){
+    if(validObservation(C, R)){
       sumC += C;
       sumR += R;
     }
   }
   if(sumC <= 0) return null;
   var p = sumR / sumC;
-  if(p <= 0 || p >= 1) return null;
   return {p:p, sumR:sumR, sumC:sumC};
 }
 
@@ -570,34 +577,34 @@ function monteCarloR(C, p){
 }
 
 function simulateRecord(){
+  if(simStale){
+    alert("學生資料或 M 已改變。舊模擬已保留；請先檢視紀錄，再按「清空後續模擬」開始新條件。");
+    stopSim();
+    return null;
+  }
   var pInfo = getEstimatedP();
   var C = getSimC();
 
   if(!pInfo){
-    alert("請先輸入有效學生資料，讓 p 介於 0 和 1。");
+    alert("請先輸入有效的 M 與完整學生資料（包含 R=0）。");
     stopSim();
     return null;
   }
 
-  if(C <= 0){
-    alert("請輸入有效的 AI 延伸模擬捕捉數 C。");
+  if(!(C > 0) || C > 100000){
+    alert("模擬 C 請輸入 1 到 100000 的整數（上限避免裝置卡住）。");
     stopSim();
     return null;
   }
 
   var R = monteCarloR(C, pInfo.p);
-  var guard = 0;
-  while(R <= 0 && guard < 20){
-    R = monteCarloR(C, pInfo.p);
-    guard++;
-  }
-  if(R <= 0) return null;
 
   return {
     source:"AI模擬",
     C:C,
     R:R,
     est:estimateN(C, R),
+    MUsed:getM(),
     pUsed:pInfo.p
   };
 }
@@ -635,12 +642,14 @@ function stopSim(){
 function clearSimulation(){
   stopSim();
   simRecords = [];
+  simStale = false;
   updateAll();
 }
 
 function resetAll(){
   stopSim();
   simRecords = [];
+  simStale = false;
   E("studentBody").innerHTML = "";
   var i;
   for(i=0;i<20;i++){
@@ -666,7 +675,7 @@ function updateStudentTable(){
   for(i=0;i<rows.length;i++){
     var C = toNum(rows[i].querySelector(".cInput").value);
     var R = toNum(rows[i].querySelector(".rInput").value);
-    var est = estimateN(C, R);
+    var est = validObservation(C, R) ? estimateN(C, R) : null;
 
     if(est !== null){
       sum += est;
@@ -674,7 +683,7 @@ function updateStudentTable(){
       rows[i].querySelector(".estCell").innerHTML = round1(est);
       rows[i].querySelector(".avgCell").innerHTML = round1(sum / count);
     }else{
-      rows[i].querySelector(".estCell").innerHTML = "-";
+      rows[i].querySelector(".estCell").innerHTML = validObservation(C, R) ? "R=0，無有限估計" : "待填／輸入不合法";
       rows[i].querySelector(".avgCell").innerHTML = "-";
     }
   }
@@ -694,18 +703,9 @@ function updateAll(){
 
   var studentRecords = getStudentRecords();
 
-  var newSim = [];
-  var s;
-  for(s=0;s<simRecords.length;s++){
-    var r = simRecords[s];
-    var est = estimateN(r.C, r.R);
-    if(est !== null){
-      newSim.push({source:"AI模擬", C:r.C, R:r.R, est:est, pUsed:r.pUsed});
-    }
-  }
-  simRecords = newSim;
-
-  var all = studentRecords.concat(simRecords);
+  E("simStatus").textContent = simStale ? "條件已變更：舊模擬保留於下表（顯示原 M、p），不納入目前統計與圖表；清空後續模擬後可重新模擬。" : "模擬保留 R=0，不重抽。p=0 或 p=1 時結果固定，只反映輸入的比例，不能證明真實母體比例。";
+  E("pooledText").textContent = pInfo ? "學生合併估計 N̂=M×ΣC÷ΣR：" + (pInfo.sumR > 0 ? round1(getM() / pInfo.p) : "無有限估計（ΣR=0）") + "；只使用學生實測，不與模擬混合。" : "學生合併估計：尚未有有效資料。";
+  var all = studentRecords.concat(simStale ? [] : simRecords);
   var body = E("resultBody");
   body.innerHTML = "";
 
@@ -714,6 +714,7 @@ function updateAll(){
   var studentCount = 0;
   var simCount = 0;
   var avgs = [];
+  var finiteCount = 0;
   var i;
 
   for(i=0;i<all.length;i++){
@@ -721,25 +722,31 @@ function updateAll(){
     if(rec.source === "學生") studentCount++;
     if(rec.source === "AI模擬") simCount++;
 
-    sum += rec.est;
+    if(rec.est !== null){ sum += rec.est; finiteCount++; }
     count++;
-    var avg = sum / count;
+    var avg = finiteCount ? sum / finiteCount : null;
     avgs.push(avg);
 
     var cls = rec.source === "學生" ? "sourceStudent" : "sourceSim";
     body.innerHTML += "<tr><td>" + count + "</td><td class='" + cls + "'>" + rec.source +
-      "</td><td>" + rec.C + "</td><td>" + rec.R + "</td><td>" + round1(rec.est) +
+      "</td><td>" + rec.C + "</td><td>" + rec.R + "</td><td>" + (rec.est === null ? "R=0，無有限估計" : round1(rec.est)) +
       "</td><td>" + round1(avg) + "</td></tr>";
   }
 
+  if(simStale){
+    for(i=0;i<simRecords.length;i++){
+      var old = simRecords[i];
+      body.innerHTML += "<tr><td>舊 " + (i+1) + "</td><td class='sourceSim'>舊模擬 M=" + old.MUsed + " p=" + round3(old.pUsed) + "</td><td>" + old.C + "</td><td>" + old.R + "</td><td>" + (old.est === null ? "R=0，無有限估計" : round1(old.est)) + "</td><td>不納入</td></tr>";
+    }
+  }
   E("studentCount").innerHTML = studentCount;
   E("simCount").innerHTML = simCount;
   E("totalCount").innerHTML = count;
-  E("avgText").innerHTML = count ? round1(sum / count) : "-";
+  E("avgText").innerHTML = finiteCount ? round1(sum / finiteCount) : "-";
 
   var realN = toNum(E("realN").value);
-  if(count && realN > 0){
-    var finalAvg = sum / count;
+  if(finiteCount && realN > 0){
+    var finalAvg = sum / finiteCount;
     var err = finalAvg - realN;
     var pct = err / realN * 100;
     E("errorText").innerHTML = round1(err) + " / " + round1(pct) + "%";
@@ -767,7 +774,7 @@ function drawChart(data, splitIndex){
 
   ctx.fillStyle = "#111827";
   ctx.font = "16px sans-serif";
-  ctx.fillText("累積平均預估數量",8,20);
+  ctx.fillText("R>0 平均預估數量",8,20);
   ctx.fillText("捉放次數",canvas.width/2-35,canvas.height-10);
 
   if(data.length === 0) return;
@@ -775,8 +782,14 @@ function drawChart(data, splitIndex){
   var showReal = E("showReal").checked;
   var realN = toNum(E("realN").value);
 
-  var min = Math.min.apply(null, data);
-  var max = Math.max.apply(null, data);
+  var min = Infinity, max = -Infinity;
+  for(var k=0;k<data.length;k++){
+    if(data[k] !== null){ min = Math.min(min, data[k]); max = Math.max(max, data[k]); }
+  }
+  if(min === Infinity){
+    if(!(showReal && realN > 0)) return;
+    min = realN; max = realN;
+  }
 
   if(showReal && realN > 0){
     min = Math.min(min, realN);
@@ -847,12 +860,14 @@ function drawChart(data, splitIndex){
     ctx.strokeStyle = "#007AFF";
     ctx.lineWidth = 3.5;
     ctx.beginPath();
-    var a;
+    var a, started = false;
     for(a=0;a<Math.min(splitIndex,data.length);a++){
+      if(data[a] === null){ started = false; continue; }
       var x = xAt(a);
       var y2 = yAt(data[a]);
-      if(a===0) ctx.moveTo(x,y2);
+      if(!started) ctx.moveTo(x,y2);
       else ctx.lineTo(x,y2);
+      started = true;
     }
     ctx.stroke();
   }
@@ -861,12 +876,14 @@ function drawChart(data, splitIndex){
     ctx.strokeStyle = "#059669";
     ctx.lineWidth = 3.5;
     ctx.beginPath();
-    var b;
+    var b, simStarted = false;
     for(b=Math.max(0,splitIndex-1);b<data.length;b++){
+      if(data[b] === null){ simStarted = false; continue; }
       var x2 = xAt(b);
       var y3 = yAt(data[b]);
-      if(b===Math.max(0,splitIndex-1)) ctx.moveTo(x2,y3);
+      if(!simStarted) ctx.moveTo(x2,y3);
       else ctx.lineTo(x2,y3);
+      simStarted = true;
     }
     ctx.stroke();
   }
@@ -874,3 +891,4 @@ function drawChart(data, splitIndex){
 </script>
 </body>
 </html>
+
